@@ -854,13 +854,13 @@ void cleanup_extra_lines(ImageMat<uint8_t>& input_mat) {
 // perfect!
 void delete_particle(int x, int y, ImageMat<uint8_t>& out_mat, Wand<uint8_t>& wand) {
     // you should reset the wand while use it!
-    wand.reset_points();
+    wand.reset_source();
     wand.auto_outline(out_mat, x, y, 255, 255);
     if (wand.get_npoint() == 0) {
         LOG_ERROR("wand error selecting edge particle at x={} y={}", x, y);
         return;
     }
-    auto& polygon = wand.get_points();
+    auto& polygon = wand.get_points_ref();
     // just set the value to lut's value where the mask_value == 255!hah so easy!
     auto bounding_box = get_bounding_box(polygon);
     int  roi_height   = bounding_box.height;
@@ -1053,18 +1053,24 @@ Status::ErrorCode find_maxima_impl(const ImageMat<float>& distance_mat,
     }
 
     // maybe need to exclude the
-    if (distance_mask.compare_shape(distance_mat)) {
-        LOG_INFO("set the value to zero which are outside(the mask value is zero!)hah!");
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                if (distance_mask(y, x) == 0) {
-                    maximum_mask(y, x) = 0;
+    if (distance_mask.empty()) {
+        LOG_INFO("distance mask is empty,so we do not need to clear outside values...");
+    } else {
+        // check whether the distance mask and distance mat shape match!
+        if (distance_mask.compare_shape(distance_mat)) {
+            LOG_INFO("set the value to zero which are outside(the mask value is zero!)hah!");
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    if (distance_mask(y, x) == 0) {
+                        maximum_mask(y, x) = 0;
+                    }
                 }
             }
+        } else {
+            LOG_INFO(
+                "the given distance mask have different shape with distance_mat,so we will not "
+                "apply any mask op...");
         }
-    } else {
-        LOG_INFO("the given distance mask have different shape with distance_mat,so we will not "
-                 "apply any mask op...");
     }
     return Status::ErrorCode::Ok;
 }

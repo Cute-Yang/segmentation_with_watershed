@@ -61,7 +61,7 @@ using namespace fish::segmentation::shape_simplier;
  * @param max_area
  * @param merge_all
  * @param watershed_postprocess
- * @param exlude_DAB
+ * @param exclude_DAB
  * @param cell_expansion
  * @param smooth_boundaries
  * @param make_measurements
@@ -138,14 +138,38 @@ ImageMat<T2> convert_mat_dtype(const ImageMat<T1>& mat) {
 
 Status::ErrorCode cell_detection_impl(
     const ImageMat<float>& original_image, int detect_channel, int Hematoxylin_channel,
-    int DAB_channel, double background_radius, double max_background, bool median_radius,
+    int DAB_channel, double background_radius, double max_background, double median_radius,
     double sigma, double threshold, double min_area, double max_area, double merge_all,
-    bool watershed_postprocess, bool exlude_DAB, double cell_expansion, bool smooth_boundaries,
+    bool watershed_postprocess, bool exclude_DAB, double cell_expansion, bool smooth_boundaries,
     bool make_measurements, bool background_by_reconstruction, bool refine_boundary,
     double downsample_factor, std::vector<PolygonTypef32>& out_nuclei_rois,
     std::vector<PolygonTypef32>& out_cell_rois) {
+    LOG_INFO("cell "
+             "detection "
+             "params\n********************************^_^*********************************"
+             "\nbackground_raidus:{}"
+             "\nmedian_radius:"
+             "{}\nsigma:{}\nthreshold:"
+             "{}\nmin_area:{}\nmax_"
+             "area:{}\ncell_expansion:{}\nmax_background:{}\nmerge_all:{}\nwatershed_postprocess:{}"
+             "\nexclude_DAB:{}\nsmooth_boundaries:{}\nmake_measurements:{}\n***********************"
+             "**********^_^*******************"
+             "**************",
+             background_radius,
+             median_radius,
+             sigma,
+             threshold,
+             min_area,
+             max_area,
+             cell_expansion,
+             max_background,
+             merge_all,
+             watershed_postprocess,
+             exclude_DAB,
+             smooth_boundaries,
+             make_measurements);
     if (original_image.empty()) {
-        LOG_ERROR("the origianl image is empty,noting to do....");
+        LOG_ERROR("the origianl image is empty,so noting to do....");
         return Status::ErrorCode::InvalidMatShape;
     }
     int height   = original_image.get_height();
@@ -175,6 +199,7 @@ Status::ErrorCode cell_detection_impl(
 
     int data_size = height * width;
     // apply copy from detect_image!
+    LOG_INFO("copying the detect channel data to a new mat!");
     ImageMat<float> transform_image(height, width, 1, MatMemLayout::LayoutRight);
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -195,7 +220,7 @@ Status::ErrorCode cell_detection_impl(
             return invoke_status;
         }
     }
-    if (exlude_DAB) {
+    if (exclude_DAB) {
         bool Hematoxylin_valid = is_valid_channel(Hematoxylin_channel, channels);
         bool DAB_valid         = is_valid_channel(DAB_channel, channels);
         // pass by ref!
@@ -237,15 +262,13 @@ Status::ErrorCode cell_detection_impl(
         }
 
         // allocate memory for background mask...,while this can not use the image_u8_placeholder!
-        LOG_INFO("allocate memory {}MB for background mask!", image_f32_memory_size);
-        background_mask.resize(height, width, 1, true);
         estimate_background(transform_image,
                             background_image,
                             background_mask,
                             background_radius,
                             max_background,
                             background_by_reconstruction);
-        copy_image_mat(transform_image, background_image, ValueOpKind::SUBSTRACT);
+        copy_image_mat(background_image, transform_image, ValueOpKind::SUBSTRACT);
 
         LOG_INFO("using the image after background estimate as the image to make measurements!");
         float* measurement_image_ptr = measurement_image.get_data_ptr();
@@ -299,9 +322,9 @@ Status::ErrorCode cell_detection_impl(
     LOG_INFO("compute the image label....");
 
     // support 2^32 -1 polygons...
-    using ImageLabelType = uint32_t;
-    ImageMat<ImageLabelType> label_image(height, width, 1, MatMemLayout::LayoutRight);
-    invoke_status = compute_image_label(morphological_image, label_image, threshold, false);
+    using image_label_t = uint32_t;
+    ImageMat<image_label_t> label_image(height, width, 1, MatMemLayout::LayoutRight);
+    invoke_status = compute_image_label(morphological_image, label_image, 0.0f, false);
     if (invoke_status != Status::ErrorCode::Ok) {
         LOG_ERROR("fail to compute image label...");
         return invoke_status;
@@ -319,10 +342,11 @@ Status::ErrorCode cell_detection_impl(
     std::vector<PolyMask>    roi_masks;
 
     // in qupath,they set min value to 0.5,but image type is short,will apply int(0.5 + 0.5) -> 1.0
-    constexpr ImageLabelType lower_thresh  = 1;
-    constexpr ImageLabelType higher_thresh = std::numeric_limits<ImageLabelType>::max();
+    constexpr image_label_t lower_thresh  = 1;
+    constexpr image_label_t higher_thresh = std::numeric_limits<image_label_t>::max();
     LOG_INFO("find filled rois...");
     {
+        LOG_INFO("binding image_u8_palceholder to temp_fill_mask...");
         auto& temp_fill_mask = image_u8_placeholder;
         invoke_status        = get_filled_polygon(label_image,
                                            temp_fill_mask,
@@ -509,6 +533,7 @@ Status::ErrorCode cell_detection_impl(
                            thresh_lower,
                            thresh_higher,
                            false);
+        LOG_INFO("find {} polygon....", nuclei_rois.size());
     }
     if (min_area > 0.0 || max_area > 0.0) {
         constexpr uint8_t current_fill_value = 0;
@@ -656,29 +681,68 @@ bool WatershedCellDetector::cell_detection(const ImageMat<float>& original_image
         downsample = 1.0;
     }
     LOG_INFO("the downsample factor is {}", downsample);
-    Status::ErrorCode status = internal::cell_detection_impl(original_image,
-                                                             detect_channel,
-                                                             Hematoxylin_channel,
-                                                             DAB_channel,
-                                                             background_radius,
-                                                             max_background,
-                                                             median_radius,
-                                                             sigma,
-                                                             threshold,
-                                                             min_area,
-                                                             max_area,
-                                                             merge_all,
-                                                             watershed_postprocess,
-                                                             exclude_DAB,
-                                                             cell_expansion,
-                                                             smooth_boundaries,
-                                                             make_measurements,
-                                                             background_by_reconstruction,
-                                                             refine_boundary,
-                                                             downsample,
-                                                             nuclei_rois,
-                                                             cell_rois);
-    return status == Status::ErrorCode::Ok;
+    Status::ErrorCode status;
+    if (!have_pixel_size_microns) {
+        status = internal::cell_detection_impl(original_image,
+                                               detect_channel,
+                                               Hematoxylin_channel,
+                                               DAB_channel,
+                                               background_radius,
+                                               max_background,
+                                               median_radius,
+                                               sigma,
+                                               threshold,
+                                               min_area,
+                                               max_area,
+                                               merge_all,
+                                               watershed_postprocess,
+                                               exclude_DAB,
+                                               cell_expansion,
+                                               smooth_boundaries,
+                                               make_measurements,
+                                               background_by_reconstruction,
+                                               refine_boundary,
+                                               downsample,
+                                               nuclei_rois,
+                                               cell_rois);
+    } else {
+        // transform some datas!
+        double pixel_size_microns = internal::compute_averaged_pixel_size_microns(
+            pixel_size_microns_h, pixel_size_microns_w);
+        LOG_INFO("transform the image proc parmas by divide pixe size microns {}",
+                 pixel_size_microns);
+        // the radius param...
+        double new_background_radius = background_radius / pixel_size_microns;
+        double new_median_radius     = median_radius / pixel_size_microns;
+        double new_sigma             = sigma / pixel_size_microns;
+        double new_min_area          = min_area / (pixel_size_microns * pixel_size_microns);
+        double new_max_area          = max_area / (pixel_size_microns * pixel_size_microns);
+        double new_cell_expansion    = cell_expansion / pixel_size_microns;
+
+        status = internal::cell_detection_impl(original_image,
+                                               detect_channel,
+                                               Hematoxylin_channel,
+                                               DAB_channel,
+                                               new_background_radius,
+                                               max_background,
+                                               new_median_radius,
+                                               new_sigma,
+                                               threshold,
+                                               new_min_area,
+                                               new_max_area,
+                                               merge_all,
+                                               watershed_postprocess,
+                                               exclude_DAB,
+                                               new_cell_expansion,
+                                               smooth_boundaries,
+                                               make_measurements,
+                                               background_by_reconstruction,
+                                               refine_boundary,
+                                               downsample,
+                                               nuclei_rois,
+                                               cell_rois);
+    }
+    return (status == Status::ErrorCode::Ok);
 }
 
 bool WatershedCellDetector::cell_detection(const ImageMat<float>& original_image,
@@ -715,7 +779,6 @@ bool WatershedCellDetector::cell_detection(const ImageMat<uint8_t>& original_ima
     bool ret = cell_detection(original_image, detect_channel, Hematoxylin_channel, DAB_channel);
     return ret;
 }
-
 
 }   // namespace watershed_cell_detection
 }   // namespace segmentation

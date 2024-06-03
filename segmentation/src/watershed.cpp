@@ -31,12 +31,13 @@ bool get_neighbor_label_with_4_conn(ImageMat<T>& marker, int x, int y, T& last_l
         }
     }
     if (y > 0) [[likely]] {
-        // above
+        // top
         if (marker(y - 1, x) != zero_value) {
             none_zero_values[count] = marker(y - 1, x);
             ++count;
         }
     }
+    // bottom!
     if (y < height - 1) [[likely]] {
         // if want to support negative,here should be <= zero_value
         if (marker(y + 1, x) != zero_value) {
@@ -45,32 +46,33 @@ bool get_neighbor_label_with_4_conn(ImageMat<T>& marker, int x, int y, T& last_l
         }
     }
     last_label = none_zero_values[0];
+    bool neightbors_fg_are_same;
     switch (count) {
     case 0:
         // means all value are zeros
-        return false;
+        neightbors_fg_are_same = false;
         break;
     case 1:
         // means only one element is none zero!
-        return true;
+        neightbors_fg_are_same = true;
         break;
     case 2:
         // means 2 element is none zero
-        return none_zero_values[0] == none_zero_values[1];
+        neightbors_fg_are_same = (none_zero_values[0] == none_zero_values[1]);
         break;
     case 3:
-        return (none_zero_values[0] == none_zero_values[1]) &&
-               (none_zero_values[1] == none_zero_values[2]);
+        neightbors_fg_are_same = (none_zero_values[0] == none_zero_values[1]) &&
+                                 (none_zero_values[1] == none_zero_values[2]);
         break;
     case 4:
-        return (none_zero_values[0] == none_zero_values[1]) &&
-               none_zero_values[1] == none_zero_values[2] &&
-               (none_zero_values[2] == none_zero_values[3]);
+        neightbors_fg_are_same = (none_zero_values[0] == none_zero_values[1]) &&
+                                 none_zero_values[1] == none_zero_values[2] &&
+                                 (none_zero_values[2] == none_zero_values[3]);
         break;
     // but it is unreachable!
-    default: break;
+    default: neightbors_fg_are_same = false; break;
     }
-    return true;
+    return neightbors_fg_are_same;
 }
 
 template<class T>
@@ -115,14 +117,15 @@ void add_neighbors_with_4_conn(WatershedQueueWrapper<T>& queue, int x, int y,
                                const ImageMat<T>& image) {
     int height = image.get_height();
     int width  = image.get_width();
-    if (x > 0) [[likely]] {
-        queue.add(x - 1, y, image(y, x));
-    }
-    if (x < width - 1) [[likely]] {
-        queue.add(x + 1, y, image(y, x + 1));
-    }
     if (y > 0) [[likely]] {
         queue.add(x, y - 1, image(y - 1, x));
+    }
+    if (x > 0) [[likely]] {
+        queue.add(x - 1, y, image(y, x - 1));
+    }
+
+    if (x < width - 1) [[likely]] {
+        queue.add(x + 1, y, image(y, x + 1));
     }
     if (y < height - 1) [[likely]] {
         queue.add(x, y + 1, image(y + 1, x));
@@ -181,11 +184,13 @@ Status::ErrorCode watershed_transform_impl(const ImageMat<T1>& image, ImageMat<T
             neightbors_fg_are_same =
                 internal::get_neighbor_label_with_8_conn<T2>(marker, x, y, last_label);
         }
+        // now we need to remove the pixel!
+        wraped_queue.remove_top_pixel();
         //如果neighbors有两种以上前景(或者无前景),修建大坝
         if (!neightbors_fg_are_same) {
             continue;
         }
-        //如果neighbors的前景相同,淹没当前像素
+        // 如果neighbors的前景相同,淹没当前像素
         marker(y, x) = last_label;
         // 广度优先扩散,添加其邻居节点
         if constexpr (conn == NeighborConnectiveType::Conn4) {

@@ -1,4 +1,5 @@
 #include "image_proc/flood_filler.h"
+#include "common/fishdef.h"
 #include "core/mat.h"
 #include "utils/logging.h"
 
@@ -21,7 +22,7 @@ FloodFiller::FloodFiller()
 }
 FloodFiller::~FloodFiller() {
     if (coordinate_stack != nullptr) {
-        delete[] coordinate_stack;
+        free(coordinate_stack);
     }
     // maybe not need!
     stack_size     = 0;
@@ -42,7 +43,7 @@ void FloodFiller::push(int x, int y) {
         }
         std::copy(coordinate_stack, coordinate_stack + stack_capacity, new_coordinate_stack);
         //释放旧的空间
-        std::free(coordinate_stack);
+        free(coordinate_stack);
         coordinate_stack = new_coordinate_stack;
         stack_capacity   = new_stack_capacity;
     }
@@ -54,7 +55,8 @@ void FloodFiller::push(int x, int y) {
 
 // only for single channel!
 template<class T>
-void FloodFiller::fill_line(ImageMat<T>& image, int x1, int x2, int y, T fill_value) {
+FISH_ALWAYS_INLINE void FloodFiller::fill_line(ImageMat<T>& image, int x1, int x2, int y,
+                                               T fill_value) {
     for (int x = x1; x < x2; ++x) {
         image(y, x) = fill_value;
     }
@@ -66,6 +68,7 @@ template<class T> bool FloodFiller::fill(ImageMat<T>& image, int x, int y, T new
     int width  = image.get_width();
     // the new color can not
     T color = image(y, x);
+    // fill curren pixel
     if (color == new_color) {
         return false;
     }
@@ -96,7 +99,8 @@ template<class T> bool FloodFiller::fill(ImageMat<T>& image, int x, int y, T new
         fill_line(image, x1, x2, y, new_color);
         // bool in_scanline = false;
         // above this line
-        if (y > 0) {
+        // be sure the y-1 not out of range!
+        if (y > 1) {
             // bad code
             //  for (int i = x1; i < x2; ++i) {
             //      if (!in_scanline && image(i, y - 1) == color) {

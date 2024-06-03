@@ -237,29 +237,34 @@ FISH_INLINE void fill_continous_memory(void* dst, int data_size, uint8_t filled_
         }
         data_size -= not_aligned_size;
     }
-    int   filled_value_word;
-    char* filled_value_word_ptr = reinterpret_cast<char*>(&filled_value_word);
+    // copy by word!
+    size_t* buf_word = reinterpret_cast<size_t*>(buf + not_aligned_size);
 
     // fill by word!
     if constexpr (aligned_byte == 4) {
-        filled_value_word_ptr[0] = filled_value;
-        filled_value_word_ptr[1] = filled_value;
-        filled_value_word_ptr[2] = filled_value;
-        filled_value_word_ptr[3] = filled_value;
+        int32_t  filled_value_word;
+        uint8_t* filled_value_word_ptr = reinterpret_cast<uint8_t*>(&filled_value_word);
+        filled_value_word_ptr[0]       = filled_value;
+        filled_value_word_ptr[1]       = filled_value;
+        filled_value_word_ptr[2]       = filled_value;
+        filled_value_word_ptr[3]       = filled_value;
+        for (int i = 0; i < data_size / aligned_byte; ++i) {
+            buf_word[i] = filled_value_word;
+        }
     } else if constexpr (aligned_byte == 8) {
-        filled_value_word_ptr[0] = filled_value;
-        filled_value_word_ptr[1] = filled_value;
-        filled_value_word_ptr[2] = filled_value;
-        filled_value_word_ptr[3] = filled_value;
-        filled_value_word_ptr[4] = filled_value;
-        filled_value_word_ptr[5] = filled_value;
-        filled_value_word_ptr[6] = filled_value;
-        filled_value_word_ptr[7] = filled_value;
-    }
-    // copy by word!
-    size_t* buf_word = reinterpret_cast<size_t*>(buf + not_aligned_size);
-    for (int i = 0; i < data_size / aligned_byte; ++i) {
-        buf_word[i] = filled_value_word;
+        int64_t  filled_value_word;
+        uint8_t* filled_value_word_ptr = reinterpret_cast<uint8_t*>(&filled_value_word);
+        filled_value_word_ptr[0]       = filled_value;
+        filled_value_word_ptr[1]       = filled_value;
+        filled_value_word_ptr[2]       = filled_value;
+        filled_value_word_ptr[3]       = filled_value;
+        filled_value_word_ptr[4]       = filled_value;
+        filled_value_word_ptr[5]       = filled_value;
+        filled_value_word_ptr[6]       = filled_value;
+        filled_value_word_ptr[7]       = filled_value;
+        for (int i = 0; i < data_size / aligned_byte; ++i) {
+            buf_word[i] = filled_value_word;
+        }
     }
 
     // copy one by one!

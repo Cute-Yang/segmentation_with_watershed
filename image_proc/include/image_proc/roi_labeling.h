@@ -44,11 +44,13 @@ struct PolygonWithMask {
 };
 
 struct PolyMask {
-    // the x coor of left upper
-    int x1;
-    // the y coor of right bottom!
-    int               y1;
+    int               x1;   // the x coor of left upper
+    int               y1;   // the y coor of right bottom!
     ImageMat<uint8_t> mask;
+    PolyMask()
+        : x1(0)
+        , y1(0)
+        , mask() {}
     PolyMask(int x1_, int y1_, const ImageMat<uint8_t>& mask_)
         : x1(x1_)
         , y1(y1_)
@@ -64,7 +66,7 @@ struct PolyMask {
         , y1(rhs.y1)
         , mask(rhs.mask) {}
 
-    PolyMask(PolyMask&& rhs)
+    PolyMask(PolyMask&& rhs) noexcept
         : x1(rhs.x1)
         , y1(rhs.y1)
         , mask(std::move(rhs.mask)) {

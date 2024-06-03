@@ -4,6 +4,7 @@
 #include "segmentation/estimate_backgroud.h"
 #include "segmentation/morphological_transform.h"
 #include "utils/logging.h"
+#include <cmath>
 #include <limits>
 
 namespace fish {
@@ -30,10 +31,14 @@ Status::ErrorCode estimate_background(const ImageMat<float>& image,
     // do the rank filter for image
     rank_filter(background_image, background_image, FilterType::MIN, rank_radius);
 
-    background_mask.set_zero();
-    uint8_t* mask_ptr            = background_mask.get_data_ptr();
-    size_t   background_mask_cnt = 0;
-    if (!std::isnan(max_background && max_background > 0)) {
+    uint8_t* mask_ptr                = background_mask.get_data_ptr();
+    size_t   background_mask_cnt     = 0;
+    bool     is_max_background_valid = (!std::isinf(max_background) && max_background > 0);
+    if (is_max_background_valid) {
+        background_mask.resize(height, width, 1, true);
+        background_mask.set_zero();
+        LOG_INFO("the max background is {},we will apply estimate background transform!",
+                 max_background);
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 // here we only handler the first channel
@@ -58,6 +63,10 @@ Status::ErrorCode estimate_background(const ImageMat<float>& image,
             // free the memory of mask
             background_mask.release_mat();
         }
+    } else {
+        LOG_INFO("the max background is {} which is invalid,so we will not apply the background "
+                 "estimate...",
+                 max_background);
     }
     if (opening_by_reconstruct) {
         morphological_transform(background_image, image);

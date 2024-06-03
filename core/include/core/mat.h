@@ -227,13 +227,19 @@ public:
         init_stride();
     }
 
-
-    ImageMat(ImageMat<T>&& rhs)
+    // must add noexcept!
+    ImageMat(ImageMat<T>&& rhs) noexcept
         : height(rhs.height)
         , width(rhs.width)
         , channels(rhs.channels)
-        , layout(rhs.layout) {
-        data_ptr = rhs.data_ptr;
+        , layout(rhs.layout)
+        , data_ptr(rhs.data_ptr)
+        , own_data(rhs.own_data) {
+        rhs.data_ptr = nullptr;
+        rhs.set_mat_empty();
+        if (!check_dimension()) {
+            set_mat_empty();
+        }
         init_stride();
     }
 
@@ -275,14 +281,10 @@ public:
     }
 
     void release_mat() noexcept {
-        if (own_data) {
-            if (data_ptr != nullptr) {
-                LOG_INFO("free data buf at 0x{:x}....", reinterpret_cast<size_t>(data_ptr));
-                free(data_ptr);
-                set_mat_empty();
-            }
-        } else {
-            LOG_INFO("out mat do not have the ownership of data,so do noting with it!");
+        if (own_data && data_ptr != nullptr) {
+            // LOG_INFO("free data buf at 0x{:x}....", reinterpret_cast<size_t>(data_ptr));
+            free(data_ptr);
+            set_mat_empty();
         }
     }
 
@@ -345,7 +347,8 @@ public:
             return true;
         }
         if (data_ptr != nullptr) {
-            LOG_INFO("free buffer at {}", reinterpret_cast<uintptr_t>(data_ptr));
+            // show with hex...
+            LOG_INFO("free buffer at 0x{:x}", reinterpret_cast<uintptr_t>(data_ptr));
             free(data_ptr);
         }
         // replace the newe/delete to malloc/free to avoid compiler do intialize...
@@ -381,17 +384,16 @@ public:
     template<class X, typename = dtype_limit<X>> bool compare_shape(const ImageMat<X>& rhs) const {
         if (height != rhs.get_height() || width != rhs.get_width() ||
             channels != rhs.get_channels()) {
-            LOG_WARN(
-                "dimenions mismatch,left image has dims ({},{},{}) right image has dims({},{},{})",
-                height,
-                width,
-                channels,
-                rhs.get_height(),
-                rhs.get_width(),
-                rhs.get_channels());
+            LOG_WARN("dimenions mismatch,left image has shape ({},{},{}) right image has shape "
+                     "({},{},{})",
+                     height,
+                     width,
+                     channels,
+                     rhs.get_height(),
+                     rhs.get_width(),
+                     rhs.get_channels());
             return false;
         }
-        LOG_INFO("shape match...");
         return true;
     }
 
@@ -849,7 +851,7 @@ template<class T> struct GenericCoordinate2d {
     GenericCoordinate2d(const GenericCoordinate2d& rhs)
         : x(rhs.x)
         , y(rhs.y) {}
-    GenericCoordinate2d(GenericCoordinate2d&& rhs)
+    GenericCoordinate2d(GenericCoordinate2d&& rhs) noexcept
         : x(rhs.x)
         , y(rhs.y) {}
     GenericCoordinate2d& operator=(const GenericCoordinate2d& rhs) {

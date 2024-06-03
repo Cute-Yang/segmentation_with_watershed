@@ -40,26 +40,23 @@ Status::ErrorCode compute_image_label_impl(const ImageMat<T1>& image, ImageMat<T
     T2*          label_ptr = label_image.get_data_ptr();
     int          data_size = height * width;
     label_image.set_zero();
-    size_t seed_num = 0;
     for (int i = 0; i < data_size; ++i) {
         if (image_ptr[i] > threshold) {
             label_ptr[i] = max_label;
-            ++seed_num;
         }
     }
     // maybe float?
-    constexpr T1 plus_value{1};
-    T2           pixel_label{1};
-    FloodFiller  flood_filler;
+    T2          pixel_label = 0;
+    FloodFiller flood_filler;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             if (label_image(y, x) == max_label) {
+                ++pixel_label;
                 if constexpr (conn_type == FloodNeighConnType::Conn4) {
                     flood_filler.fill(label_image, x, y, pixel_label);
                 } else {
                     flood_filler.fill_eight(label_image, x, y, pixel_label);
                 }
-                ++pixel_label;
             }
         }
     }
@@ -118,6 +115,11 @@ Status::ErrorCode get_filled_polygon_impl(const ImageMat<T>& image, ImageMat<uin
                                           int wand_mode, std::vector<PolygonType>& filled_rois,
                                           std::vector<PolyMask>& roi_masks, T thresh_lower,
                                           T thresh_higher) {
+    filled_rois.resize(0);
+    roi_masks.resize(0);
+    constexpr size_t estimae_polygon_size = 4;
+    filled_rois.reserve(estimae_polygon_size);
+    roi_masks.reserve(estimae_polygon_size);
     if constexpr (std::is_same<T, uint8_t>::value) {
         if (&image == &image_mask) {
             LOG_ERROR("the image and image mask can not be same one!");
@@ -149,11 +151,12 @@ Status::ErrorCode get_filled_polygon_impl(const ImageMat<T>& image, ImageMat<uin
             }
             T value = image(y, x);
             if (value >= thresh_lower && value <= thresh_higher) {
+                // continue;
                 if (!wand_runner.auto_outline(image, x, y, 0.0, wand_mode)) {
                     continue;
                 }
                 // got the ref!
-                const std::vector<Coordinate2d>& poly = wand_runner.get_points();
+                std::vector<Coordinate2d>& poly = wand_runner.get_points_ref();
                 if constexpr (only_poly) {
                     poly_filler.fill_polygon(poly.data(), poly.size(), image_mask, fill_value);
                     filled_rois.push_back(poly);
@@ -163,20 +166,27 @@ Status::ErrorCode get_filled_polygon_impl(const ImageMat<T>& image, ImageMat<uin
                     int       y1         = bound_rect.y;
                     int       rh         = bound_rect.height;
                     int       rw         = bound_rect.width;
+                    // there have some error with wand!
+                    LOG_INFO("x:{} y:{} rh:{} rw:{} point_num:{}", x1, y1, rh, rw, poly.size());
 
+                    // there have some erro while finding the polygon!
                     ImageMat<uint8_t> poly_mask(rh, rw, 1, MatMemLayout::LayoutRight);
                     poly_mask.set_zero();
-                    std::vector<Coordinate2d> _poly(poly.size());
-                    for (size_t i = 0; i < _poly.size(); ++i) {
-                        _poly[i].x -= x1;
-                        _poly[i].y -= y1;
+                    // std::vector<Coordinate2d> poly(32);
+                    // _poly.reserve(poly.size());
+                    // LOG_INFO("the sizeof _poly is {}", poly.size());
+                    // for (size_t i = 0; i < poly.size(); ++i) {
+                    //     // _poly[i].x = poly[i].x - x1;
+                    //     // _poly[i].y = poly[i].y - y1;
+                    //     _poly.emplace_back(poly[i].x - x1, poly[i].y - y1);
+                    // }
+                    for (size_t i = 0; i < poly.size(); ++i) {
+                        poly[i].x -= x1;
+                        poly[i].y -= y1;
                     }
-                    poly_filler.fill_polygon(_poly.data(), _poly.size(), poly_mask, fill_value);
-                    for (size_t i = 0; i < _poly.size(); ++i) {
-                        _poly[i].x += x1;
-                        _poly[i].y += y1;
-                    }
-                    uint8_t* poly_mask_ptr = poly_mask.get_data_ptr();
+                    poly_filler.fill_polygon(poly.data(), poly.size(), poly_mask, fill_value);
+                    // then,recover the coordinae...
+                    // here fill mask maybe failed... so got the repeated polygon!
                     for (int yy = 0; yy < rh; ++yy) {
                         for (int xx = 0; xx < rw; ++xx) {
                             // this is error!,0 | 0 is also,will make other value bad,only set value
@@ -188,12 +198,16 @@ Status::ErrorCode get_filled_polygon_impl(const ImageMat<T>& image, ImageMat<uin
                             }
                         }
                     }
-                    filled_rois.push_back(std::move(_poly));
-                    roi_masks.emplace_back(x1, y1, std::move(poly_mask));
+                    // add the original polygon to datas...
+                    // for (size_t i = 0; i < _poly.size(); ++i) {
+                    //     _poly[i].x += x1;
+                    //     _poly[i].y += y1;
+                    // }
                 }
             }
         }
     }
+    exit(0);
     return Status::ErrorCode::Ok;
 }
 
@@ -310,7 +324,7 @@ Status::ErrorCode labels_to_filled_polygon_impl(const ImageMat<T>& label_image,
                 if (!wand_runner.auto_outline(label_image, x, y, 0, WandMode::EIGHT_CONNECTAED)) {
                     continue;
                 }
-                std::vector<Coordinate2d>& poly = wand_runner.get_points();
+                std::vector<Coordinate2d>& poly = wand_runner.get_points_ref();
                 if constexpr (only_poly) {
                     poly_filler.fill_polygon(poly.data(), poly.size(), image_mask, fill_value);
                     filled_rois.push_back(poly);

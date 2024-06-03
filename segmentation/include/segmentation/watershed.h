@@ -1,4 +1,5 @@
 #pragma once
+#include "common/fishdef.h"
 #include "core/base.h"
 #include "core/mat.h"
 #include "utils/logging.h"
@@ -182,7 +183,6 @@ public:
     using const_pixel_ptr_t = const PixelWithValue<T>*;
 
 private:
-    //这里实际也可以使用引用,达到内存复用的母的
     std::priority_queue<PixelWithValue<T>, std::vector<PixelWithValue<T>>,
                         std::less<PixelWithValue<T>>>
         pixel_queue;
@@ -212,46 +212,153 @@ public:
                     float estimate_enqueue_rate) {
         constexpr MarkerType marker_zero = static_cast<MarkerType>(0);
         // 可以获取到其 container
-        int height = image.get_height();
-        int width  = image.get_width();
-        // 1/5作为预留空间
+        int height   = image.get_height();
+        int width    = image.get_width();
+        int channels = image.get_channels();
+        if (channels != 1) {
+            LOG_ERROR("the watershed only suppot single channel image now...");
+            return;
+        }
+        // allocate 0.2 x element size as init space
         std::vector<PixelWithValue<T>> queue_container;
         if (estimate_enqueue_rate <= 0.0f || estimate_enqueue_rate >= 1.0f) {
             LOG_WARN("get invalid estimate_enqueue_rate %f,we will set 0.2 as default!",
                      estimate_enqueue_rate);
             estimate_enqueue_rate = 0.2f;
         }
-        queue_container.reserve(
-            static_cast<size_t>(static_cast<float>(height * width) * estimate_enqueue_rate));
+        size_t estimate_enqueue_size = static_cast<float>(height * width) * estimate_enqueue_rate;
+        queue_container.reserve(estimate_enqueue_size);
         std::priority_queue<PixelWithValue<T>> temp_queue(std::less<PixelWithValue<T>>(),
                                                           std::move(queue_container));
         LOG_INFO("allocate {} elements for our quque container!", height * width / 5);
         queued.resize(height, width, 1, true);
         // fill with zero!
         queued.set_zero();
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                if (image(y, x) <= min_threshold) {
-                    queued(y, x) = IS_QUEUED;
-                    continue;
+
+        // this case should never happend!
+        if (height == 1 && width == 1) [[unlikely]] {
+            LOG_INFO("got image with shape(1,1) which is unexpected!");
+            if (image(0, 0) <= min_threshold || marker(0, 0) != marker_zero) {
+                queued(0, 0) = IS_QUEUED;
+            } else {
+                queued(0, 0) = IS_QUEUED;
+                temp_queue.emplace(0, 0, image(0, 0), counter);
+                ++counter;
+            }
+        }
+        if (height == 1) [[unlikely]] {
+            // if miss neigh,and the value > threshold,we will push it always
+            LOG_INFO("enqueue with shape(1,{})", width);
+            for (int x = 0; x < width - 1; ++x) {
+                if (image(0, x) <= min_threshold) {
+                    queued(0, x) = IS_QUEUED;
+                } else {
+                    if (marker(0, x) != marker_zero) {
+                        queued(0, 0) = IS_QUEUED;
+                    } else {
+                        queued(0, 0) = IS_QUEUED;
+                        temp_queue.emplace(x, 0, image(0, x), counter);
+                        ++counter;
+                    }
                 }
-                if (marker(y, x) != marker_zero) {
-                    queued(y, x) = IS_QUEUED;
-                } else if (marker(y, x + 1) != marker_zero || marker(y, x - 1) != marker_zero ||
-                           marker(y - 1, x) != marker_zero || marker(y + 1, x) != marker_zero) {
-                    queued(y, x) = IS_QUEUED;
-                    //如果邻居中存在非0点,入队列
-                    temp_queue.emplace(x, y, image(y, x), counter);
-                    ++counter;
+            }
+        } else if (width == 1) [[unlikely]] {
+            // process the first point
+            for (int y = 0; y < height; ++y) {
+                if (image(y, 0) <= min_threshold) {
+                    queued(y, 0) = IS_QUEUED;
+                } else {
+                    if (marker(y, 0) != marker_zero) {
+                        queued(y, 0) = IS_QUEUED;
+                    } else {
+                        queued(y, 0) = IS_QUEUED;
+                        temp_queue.emplace(0, y, image(y, 0), counter);
+                        ++counter;
+                    }
+                }
+            }
+        } else {
+            LOG_INFO("enqueue with image shape ({},{})", height, width);
+            for (int x = 0; x < width; ++x) {
+                if (image(0, x) <= min_threshold) {
+                    queued(0, x) = IS_QUEUED;
+                } else {
+                    if (marker(0, x) != marker_zero) {
+                        queued(0, x) = IS_QUEUED;
+                    } else {
+                        queued(0, x) = IS_QUEUED;
+                        temp_queue.emplace(x, 0, image(0, 0), counter);
+                        ++counter;
+                    }
+                }
+            }
+
+            for (int y = 1; y < height - 1; ++y) {
+                // handle special value y,0
+                if (image(y, 0) <= min_threshold) {
+                    queued(y, 0) = IS_QUEUED;
+                } else {
+                    if (marker(y, 0) != marker_zero) {
+                        queued(y, 0) = IS_QUEUED;
+                    } else {
+                        queued(y, 0) = IS_QUEUED;
+                        temp_queue.emplace(0, y, image(y, 0), counter);
+                        ++counter;
+                    }
+                }
+
+                for (int x = 1; x < width - 1; ++x) {
+                    if (image(y, x) <= min_threshold) {
+                        queued(y, x) = IS_QUEUED;
+                    } else {
+                        if (marker(y, x) != marker_zero) {
+                            queued(y, x) = IS_QUEUED;
+                            // this case have left,right,top,bottom neigh!
+                        } else if (marker(y, x + 1) != marker_zero ||
+                                   marker(y, x - 1) != marker_zero ||
+                                   marker(y - 1, x) != marker_zero ||
+                                   marker(y + 1, x) != marker_zero) {
+                            queued(y, x) = IS_QUEUED;
+                            temp_queue.emplace(x, y, image(y, x), counter);
+                            ++counter;
+                        }
+                    }
+                }
+                // process y,width -1
+                if (image(y, width - 1) <= min_threshold) {
+                    queued(y, width - 1) = IS_QUEUED;
+                } else {
+                    if (marker(y, width - 1) != marker_zero) {
+                        queued(y, width - 1) = IS_QUEUED;
+                    } else {
+                        queued(y, width - 1) = IS_QUEUED;
+                        temp_queue.emplace(width - 1, y, image(y, width - 1), counter);
+                        ++counter;
+                    }
+                }
+            }
+            // here if the point miss neigh,will return float.NAN,it is not equal to the zero!
+            for (int x = 0; x < width; ++x) {
+                if (image(height - 1, x) <= min_threshold) {
+                    queued(height - 1, x) = IS_QUEUED;
+                } else {
+                    if (marker(height - 1, x) != marker_zero) {
+                        queued(height - 1, x) = IS_QUEUED;
+                    } else {
+                        queued(height - 1, x) = IS_QUEUED;
+                        temp_queue.emplace(x, height - 1, image(height - 1, x), counter);
+                        ++counter;
+                    }
                 }
             }
         }
         // swap the queue and temp queue
-        LOG_INFO("try to reseve some memory to avoid expand....");
+        LOG_INFO("the eneuque point num is {}", counter);
+        // swap pixel_queue and temp queue!
         pixel_queue.swap(temp_queue);
     }
 
-    void add(int x, int y, T value) {
+    FISH_ALWAYS_INLINE void add(int x, int y, T value) {
         if (queued(y, x) == NOT_QUEUED) {
             pixel_queue.emplace(x, y, value, counter);
             ++counter;
@@ -259,10 +366,10 @@ public:
         }
     }
 
-    bool can_add_to_queue(int x, int y) { return queued(y, x) == NOT_QUEUED; }
+    FISH_ALWAYS_INLINE bool can_add_to_queue(int x, int y) { return queued(y, x) == NOT_QUEUED; }
 
-    const PixelWithValue<T>& get_top_pixel() { return pixel_queue.top(); }
-    void                     remove_top_pixel() { pixel_queue.pop(); }
+    FISH_ALWAYS_INLINE const PixelWithValue<T>& get_top_pixel() { return pixel_queue.top(); }
+    FISH_ALWAYS_INLINE void                     remove_top_pixel() { pixel_queue.pop(); }
 
     // will copy....
     PixelWithValue<T> get_top_pixel_safe() {

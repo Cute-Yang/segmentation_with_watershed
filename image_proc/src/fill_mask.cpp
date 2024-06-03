@@ -2,7 +2,6 @@
 #include "common/fishdef.h"
 #include "core/mat.h"
 #include "image_proc/polygon.h"
-#include "utils/logging.h"
 #include <cstdint>
 #include <vector>
 
@@ -12,7 +11,6 @@ namespace fill_mask {
 void PolygonFiller::build_edge_table(const Coordinate2d* points, int point_size) {
     edge_num       = 0;
     int poly_start = 0;
-    LOG_INFO("points size:{}", point_size);
     // 这里就是计算顺时针排列后,两两连线之间的斜率,只不过是相交于y轴(height方向)的斜率
     for (int i = 0; i < point_size; ++i) {
         // 这里要循环遍历,所以最后一个点连接的是第一个点
@@ -147,6 +145,7 @@ void PolygonFiller::update_x_coors() {
     }
 }
 
+// this function will cause some error!
 void fill_continous_memory(void* dst, int data_size, uint8_t fill_value) {
     uint8_t*  buf  = reinterpret_cast<uint8_t*>(dst);
     uintptr_t addr = reinterpret_cast<uintptr_t>(dst);
@@ -164,8 +163,8 @@ void fill_continous_memory(void* dst, int data_size, uint8_t fill_value) {
         }
         data_size -= not_aligned_size;
     }
-    int   fill_value_word;
-    char* fill_value_word_ptr = reinterpret_cast<char*>(&fill_value_word);
+    size_t fill_value_word;
+    char*  fill_value_word_ptr = reinterpret_cast<char*>(&fill_value_word);
 
     // fill by word!
     if constexpr (aligned_byte == 4) {
@@ -184,13 +183,14 @@ void fill_continous_memory(void* dst, int data_size, uint8_t fill_value) {
         fill_value_word_ptr[7] = fill_value;
     }
     // copy by word!
-    size_t* buf_word = reinterpret_cast<size_t*>(buf + not_aligned_size);
-    for (int i = 0; i < data_size / aligned_byte; ++i) {
+    size_t* buf_word          = reinterpret_cast<size_t*>(buf + not_aligned_size);
+    int     aligned_fill_size = data_size / aligned_byte * aligned_byte;
+    for (int i = 0; i < aligned_fill_size; ++i) {
         buf_word[i] = fill_value_word;
     }
 
     // copy one by one!
-    for (int i = data_size * aligned_byte / aligned_byte; i < data_size; ++i) {
+    for (int i = aligned_fill_size; i < data_size; ++i) {
         buf[i + not_aligned_size] = fill_value;
     }
 }
@@ -222,7 +222,10 @@ void PolygonFiller::fill_polygon_impl(const Coordinate2d* points, int point_size
             x2                       = FISH_CLIP(x2, 0, width);
             int      ptr_offset      = width * y + x1;
             uint8_t* filled_mask_ptr = mask_ptr + ptr_offset;
-            fill_continous_memory(filled_mask_ptr, x2 - x1, fill_value);
+            // fill_continous_memory(filled_mask_ptr, x2 - x1, fill_value);
+            for (int x = x1; x < x2; ++x) {
+                mask(y, x) = fill_value;
+            }
             update_x_coors();
         }
     }
@@ -260,7 +263,10 @@ ImageMat<uint8_t> PolygonFiller::fill_polygon(const Coordinate2d* points, int po
             // shift to (0,0)
             int      ptr_offset      = w * (y - y0) + (x1 - x0);
             uint8_t* filled_mask_ptr = mask_ptr + ptr_offset;
-            fill_continous_memory(filled_mask_ptr, x2 - x1, fill_value);
+            // fill_continous_memory(filled_mask_ptr, x2 - x1, fill_value);
+            for (int x = x1; x < x2; ++x) {
+                mask(y, x) = fill_value;
+            }
             update_x_coors();
         }
     }

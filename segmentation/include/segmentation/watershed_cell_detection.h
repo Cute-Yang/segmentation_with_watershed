@@ -50,12 +50,11 @@ private:
     double pixel_size_microns_w;
     double requested_pixel_size;
 
-
     // this is the polygon of nuclei
     std::vector<PolygonTypef32> nuclei_rois;
     // this is the polygon of cell!
     std::vector<PolygonTypef32> cell_rois;
-
+    void                        transform_params_by_microns();
 
 
     // should add 3 statics nuclei_stat/cell_stat/Cytoplasm stat(the area between nuclei and cell)
@@ -106,7 +105,7 @@ public:
 
     void set_smooth_boundaries(bool smooth_boundaries_) { smooth_boundaries = smooth_boundaries_; }
 
-    void set_maek_measurements(bool make_measurements_) { make_measurements = make_measurements_; }
+    void set_make_measurements(bool make_measurements_) { make_measurements = make_measurements_; }
 
     void set_background_by_reconstruction(bool background_by_reconstruction_) {
         background_by_reconstruction = background_by_reconstruction_;
@@ -114,7 +113,22 @@ public:
 
     void set_refine_boundary(bool refine_boundary_) { refine_boundary = refine_boundary_; }
 
-    // this function for image which have microns,be sure your image is sampled with speicfy ratio!
+    void set_have_pixle_size_microns(bool have_pixel_size_microns_) {
+        have_pixel_size_microns = have_pixel_size_microns_;
+    }
+
+    void set_pixel_size_microns(double pixel_size_microns_h_, double pixel_size_microns_w_) {
+        pixel_size_microns_h = pixel_size_microns_h_;
+        pixel_size_microns_w = pixel_size_microns_w_;
+    }
+
+    // this param will be effective only set have pixel size microns
+    void set_requested_pixel_size(double requested_pixel_size_) {
+        requested_pixel_size = requested_pixel_size_;
+    }
+
+    // this function for image which have microns,be sure your image is sampled with speicfy
+    // ratio!
     bool cell_detection(const ImageMat<float>& original_image, int detect_channel,
                         int Hematoxylin_channel, int DAB_channel);
 

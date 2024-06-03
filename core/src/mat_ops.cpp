@@ -29,7 +29,7 @@ template<class T, ValueOpKind op, typename = dtype_limit<T>>
 FISH_ALWAYS_INLINE T value_op(T src, T dst) {
     constexpr T    zero_value{0};
     T              value          = zero_value;
-    constexpr T    type_min_value = std::numeric_limits<T>::min();
+    constexpr T    type_min_value = std::numeric_limits<T>::lowest();
     constexpr bool type_is_signed = type_min_value < 0;
     if constexpr (op == ValueOpKind::ONLY_COPY) {
         value = src;

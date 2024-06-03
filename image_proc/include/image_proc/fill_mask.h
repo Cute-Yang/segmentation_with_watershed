@@ -55,7 +55,19 @@ private:
         edge_num          = 0;
         activate_edge_num = 0;
         // reuse the memory!
+        uintptr_t p = reinterpret_cast<uintptr_t>(edge_lower_y_coors.data());
+        if (point_size == 52) {
+            LOG_INFO("error...");
+        }
         edge_x_coors.resize(point_size);
+        LOG_INFO("prev_size:{} current_size:{} cap:{} lower_y_ptr:{} upper_y_ptr:{} edge_x_ptr:{}",
+                 edge_upper_y_coors.size(),
+                 point_size,
+                 edge_upper_y_coors.capacity(),
+                 reinterpret_cast<uintptr_t>(edge_lower_y_coors.data()),
+                 reinterpret_cast<uintptr_t>(edge_upper_y_coors.data()),
+                 reinterpret_cast<uintptr_t>(edge_x_coors.data()));
+        // resize upper broken...
         edge_upper_y_coors.resize(point_size);
         edge_lower_y_coors.resize(point_size);
         edge_slopes.resize(point_size);

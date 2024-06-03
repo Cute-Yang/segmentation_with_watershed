@@ -3,6 +3,7 @@
 #include "core/mat.h"
 #include "image_proc/polygon.h"
 #include <cmath>
+#include <vector>
 
 
 namespace fish {
@@ -29,7 +30,7 @@ private:
     T                         upper_threshold;
 
 private:
-    bool inside(int x, int y, const ImageMat<T>& image) {
+    FISH_ALWAYS_INLINE bool inside(int x, int y, const ImageMat<T>& image) {
         int height = image.get_height();
         int width  = image.get_width();
         // the coor shoud be invalid and the pixel value in given interval!
@@ -83,10 +84,12 @@ private:
         }
         return inside(x - 1, y, image);
     }
-    void add_point(int x, int y) { points.emplace_back(x, y); }
+    FISH_ALWAYS_INLINE void add_point(int x, int y) { points.emplace_back(x, y); }
     template<TraceConnectiveType conn_type>
     bool trace_edge(int start_x, int start_y, const ImageMat<T>& image) {
         int width = image.get_width();
+        xmin      = width;
+        points.resize(0);
         int start_direction;
         if (inside(start_x, start_y, image)) {
             start_direction = 1;
@@ -197,6 +200,8 @@ public:
 
     bool auto_outline(const ImageMat<T>& image, int start_x, int start_y, float tolerance,
                       int mode) {
+        // avoid trash...
+        this->reset_source();
         bool thresh_mode = (mode & WandMode::THRESHHOLD_MODE) != 0;
         if (!thresh_mode) {
             float value = static_cast<float>(image(start_y, start_x));
@@ -289,10 +294,17 @@ public:
             upper_threshold = static_cast<T>(std::floor(threshold));
         }
     }
-    std::vector<Coordinate2d>&       get_points() { return points; }
-    const std::vector<Coordinate2d>& get_points() const { return points; }
-    void                             reset_points() { points.resize(0); }
-    int                              get_npoint() const { return points.size(); }
+    std::vector<Coordinate2d>&       get_points_ref() { return points; }
+    const std::vector<Coordinate2d>& get_points_cref() const { return points; }
+    std::vector<Coordinate2d>        get_points() { return points; }
+
+    std::vector<Coordinate2d> get_points() const { return points; }
+    int                       get_npoint() const { return points.size(); }
+
+    FISH_ALWAYS_INLINE void reset_source() {
+        xmin = 0;
+        points.resize(0);
+    }
 };
 
 }   // namespace contour
